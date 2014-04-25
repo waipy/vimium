@@ -1,20 +1,5 @@
 DomUtils =
   #
-  # Adds the given CSS to the page.
-  #
-  addCssToPage: (css, id) ->
-    return if document.getElementById(id)
-    head = document.getElementsByTagName("head")[0]
-    if (!head)
-      head = document.createElement("head")
-      document.documentElement.appendChild(head)
-    style = document.createElement("style")
-    style.id = id
-    style.type = "text/css"
-    style.appendChild(document.createTextNode(css))
-    head.appendChild(style)
-
-  #
   # Runs :callback if the DOM has loaded, otherwise runs it on load
   #
   documentReady: do ->
@@ -61,11 +46,21 @@ DomUtils =
   #
   getVisibleClientRect: (element) ->
     # Note: this call will be expensive if we modify the DOM in between calls.
-    clientRects = element.getClientRects()
+    clientRects = ({
+      top: clientRect.top, right: clientRect.right, bottom: clientRect.bottom, left: clientRect.left,
+      width: clientRect.width, height: clientRect.height
+    } for clientRect in element.getClientRects())
 
     for clientRect in clientRects
-      if (clientRect.top < -2 || clientRect.top >= window.innerHeight - 4 ||
-          clientRect.left < -2 || clientRect.left  >= window.innerWidth - 4)
+      if (clientRect.top < 0)
+        clientRect.height += clientRect.top
+        clientRect.top = 0
+
+      if (clientRect.left < 0)
+        clientRect.width += clientRect.left
+        clientRect.left = 0
+
+      if (clientRect.top >= window.innerHeight - 4 || clientRect.left  >= window.innerWidth - 4)
         continue
 
       if (clientRect.width < 3 || clientRect.height < 3)
@@ -74,7 +69,8 @@ DomUtils =
       # eliminate invisible elements (see test_harnesses/visibility_test.html)
       computedStyle = window.getComputedStyle(element, null)
       if (computedStyle.getPropertyValue('visibility') != 'visible' ||
-          computedStyle.getPropertyValue('display') == 'none')
+          computedStyle.getPropertyValue('display') == 'none' ||
+          computedStyle.getPropertyValue('opacity') == '0')
         continue
 
       return clientRect
@@ -85,12 +81,12 @@ DomUtils =
       if (clientRect.width == 0 || clientRect.height == 0)
         for child in element.children
           computedStyle = window.getComputedStyle(child, null)
-          # Ignore child elements which are not floated and not absolutely positioned for parent elements with zero width/height
-          if (computedStyle.getPropertyValue('float') == 'none' && computedStyle.getPropertyValue('position') != 'absolute')
-            continue
+          # Ignore child elements which are not floated and not absolutely positioned for parent elements with
+          # zero width/height
+          continue if (computedStyle.getPropertyValue('float') == 'none' &&
+            computedStyle.getPropertyValue('position') != 'absolute')
           childClientRect = @getVisibleClientRect(child)
-          if (childClientRect == null)
-            continue
+          continue if (childClientRect == null)
           return childClientRect
     null
 
@@ -128,8 +124,12 @@ DomUtils =
     flashEl.style.top = rect.top  + window.scrollY  + "px"
     flashEl.style.width = rect.width + "px"
     flashEl.style.height = rect.height + "px"
-    document.body.appendChild(flashEl)
-    setTimeout((-> flashEl.parentNode.removeChild(flashEl)), 400)
+    document.documentElement.appendChild(flashEl)
+    setTimeout((-> DomUtils.removeElement flashEl), 400)
+
+  suppressEvent: (event) ->
+    event.preventDefault()
+    event.stopPropagation()
 
 root = exports ? window
 root.DomUtils = DomUtils
